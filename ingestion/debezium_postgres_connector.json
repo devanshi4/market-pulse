@@ -1,0 +1,27 @@
+{
+  "name": "market-pulse-postgres-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "market_pulse_postgres",
+    "database.port": "5432",
+    "database.user": "market_user",
+    "database.password": "market_pass123",
+    "database.dbname": "market_pulse",
+    "database.server.name": "market_pulse",
+    "topic.prefix": "market_pulse",
+    "table.include.list": "public.trades,public.positions,public.accounts",
+    "plugin.name": "pgoutput",
+    "slot.name": "debezium_slot",
+    "publication.name": "debezium_publication",
+    "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "key.converter.schemas.enable": "false",
+    "value.converter.schemas.enable": "false",
+    "snapshot.mode": "initial",
+    "decimal.handling.mode": "string",
+    "transforms": "unwrap",
+    "transforms.unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
+    "transforms.unwrap.drop.tombstones": "false",
+    "transforms.unwrap.delete.handling.mode": "rewrite"
+  }
+}

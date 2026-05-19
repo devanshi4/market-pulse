@@ -36,7 +36,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Kafka (KRaft mode — no Zookeeper) ─────────────────────────────────────
+  # ── Kafka (KRaft mode) ─────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: market_pulse_kafka

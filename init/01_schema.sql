@@ -29,6 +29,20 @@ CREATE TABLE IF NOT EXISTS positions (
     UNIQUE (account_id, ticker)
 );
 
+CREATE TABLE IF NOT EXISTS market_prices (
+    price_id      SERIAL PRIMARY KEY,
+    ticker        VARCHAR(10)     NOT NULL,
+    open_price    NUMERIC(10, 4),
+    high_price    NUMERIC(10, 4),
+    low_price     NUMERIC(10, 4),
+    close_price   NUMERIC(10, 4),
+    volume        BIGINT,
+    fetched_at    TIMESTAMP       NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_prices_ticker_fetched
+    ON market_prices (ticker, fetched_at DESC);
+
 INSERT INTO accounts (owner_name, email, balance) VALUES
     ('Alice Morgan',   'alice@example.com',   50000.00),
     ('Bob Chen',       'bob@example.com',     75000.00),
