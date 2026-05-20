@@ -51,9 +51,6 @@ services:
       CLUSTER_ID:                                   MkU3OEVBNTcwNTJENDM2Qk
 
       # Listeners and advertised listeners:
-      # PLAINTEXT  = internal container-to-container traffic
-      # CONTROLLER = KRaft controller communication 
-      # EXTERNAL   = your laptop Python scripts connecting to Kafka
       KAFKA_LISTENERS:                              PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:29092
       KAFKA_ADVERTISED_LISTENERS:                   PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP:         PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
