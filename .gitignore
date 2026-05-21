@@ -1,4 +1,6 @@
 .env
+gcp-credentials.json
+market_pulse_catalog.db
 __pycache__/
 *.pyc
 .DS_Store

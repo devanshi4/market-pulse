@@ -4,3 +4,6 @@ yfinance==0.2.38
 python-dotenv==1.0.1
 pandas==2.2.1
 confluent-kafka==2.3.0
+google-cloud-storage==2.14.0
+pyiceberg[gcs,pyarrow,sql-sqlite]==0.6.1
+pyarrow==15.0.0
