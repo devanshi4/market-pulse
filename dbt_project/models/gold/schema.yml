@@ -1,0 +1,57 @@
+version: 2
+
+models:
+
+  - name: gold_portfolio_summary
+    description: >
+      Current portfolio state for every account and ticker.
+      Includes unrealized P&L, market value, and 7-day moving average.
+      One row per account per ticker.
+    columns:
+      - name: account_id
+        tests:
+          - not_null
+      - name: ticker
+        tests:
+          - not_null
+      - name: current_price
+        tests:
+          - not_null
+      - name: unrealized_pnl
+        description: Positive = profit, Negative = loss
+
+  - name: gold_trading_activity
+    description: >
+      Trading statistics per account per ticker.
+      Includes buy/sell counts, volume, and average prices.
+    columns:
+      - name: account_id
+        tests:
+          - not_null
+      - name: ticker
+        tests:
+          - not_null
+
+  - name: gold_price_analytics
+    description: >
+      Daily OHLCV aggregations with moving averages and momentum signals.
+      One row per ticker per day.
+    columns:
+      - name: ticker
+        tests:
+          - not_null
+      - name: price_date
+        tests:
+          - not_null
+
+  - name: gold_account_performance
+    description: >
+      Top-level account performance summary.
+      One row per account. Used for executive dashboards.
+    columns:
+      - name: account_id
+        tests:
+          - unique
+          - not_null
+      - name: portfolio_return_pct
+        description: Overall portfolio return as percentage

@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: market-pulse-496922
+    schema: bronze
+    description: >
+      Raw bronze layer — data exactly as it arrived from Kafka.
+      Types may be wrong, CDC metadata included, duplicates possible.
+
+    tables:
+      - name: trades
+        description: Every trade event captured by Debezium CDC from Postgres
+        columns:
+          - name: trade_id
+            description: Unique identifier for each trade
+          - name: account_id
+            description: Which account placed this trade
+          - name: ticker
+            description: Stock ticker symbol e.g. AAPL, TSLA
+          - name: trade_type
+            description: BUY or SELL
+          - name: quantity
+            description: Number of shares traded
+          - name: price
+            description: Price per share as string (cast to numeric in silver)
+          - name: traded_at
+            description: Unix epoch microseconds (convert to timestamp in silver)
+          - name: _cdc_op
+            description: CDC operation - r=snapshot, c=insert, u=update, d=delete
+
+      - name: positions
+        description: Current holdings per account per ticker
+
+      - name: accounts
+        description: Brokerage customer accounts
+
+      - name: market_prices
+        description: OHLCV price snapshots from Yahoo Finance every 60 seconds
