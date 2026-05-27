@@ -1,0 +1,94 @@
+version: 2
+
+models:
+
+  - name: silver_trades
+    description: >
+      Cleaned and type-cast trade events from bronze.
+      Snapshot rows removed. Deduplicated by trade_id.
+    columns:
+      - name: trade_id
+        description: Unique trade identifier
+        tests:
+          - unique
+          - not_null
+      - name: account_id
+        description: Account that placed the trade
+        tests:
+          - not_null
+      - name: ticker
+        description: Stock ticker symbol
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['AAPL', 'GOOGL', 'TSLA', 'MSFT', 'AMZN', 'NVDA', 'META', 'NFLX']
+      - name: trade_type
+        description: BUY or SELL
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BUY', 'SELL']
+      - name: price
+        description: Trade execution price as exact decimal
+        tests:
+          - not_null
+      - name: traded_at
+        description: Timestamp of the trade
+        tests:
+          - not_null
+
+  - name: silver_positions
+    description: >
+      Latest position state per account per ticker.
+      Only active positions (shares_held > 0) included.
+    columns:
+      - name: position_id
+        description: Unique position identifier
+        tests:
+          - not_null
+      - name: account_id
+        description: Account holding this position
+        tests:
+          - not_null
+      - name: ticker
+        description: Stock being held
+        tests:
+          - not_null
+      - name: shares_held
+        description: Current number of shares held
+        tests:
+          - not_null
+      - name: avg_buy_price
+        description: Average price paid per share
+        tests:
+          - not_null
+
+  - name: silver_accounts
+    description: Latest state of each brokerage account
+    columns:
+      - name: account_id
+        description: Unique account identifier
+        tests:
+          - unique
+          - not_null
+      - name: email
+        description: Account email address
+        tests:
+          - unique
+          - not_null
+
+  - name: silver_market_prices
+    description: OHLCV price snapshots from Yahoo Finance
+    columns:
+      - name: ticker
+        description: Stock ticker symbol
+        tests:
+          - not_null
+      - name: close_price
+        description: Closing price for this minute bar
+        tests:
+          - not_null
+      - name: fetched_at
+        description: When this price was fetched
+        tests:
+          - not_null
