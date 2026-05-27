@@ -8,3 +8,6 @@ google-cloud-storage==2.14.0
 pyiceberg[gcs,pyarrow,sql-sqlite]==0.6.1
 pyarrow==15.0.0
 dbt-bigquery==1.7.0
+dagster==1.6.0
+dagster-webserver==1.6.0
+dagster-dbt==0.22.0
