@@ -5,3 +5,10 @@ __pycache__/
 *.pyc
 .DS_Store
 .dagster/
+# Terraform: never commit state, variable values or provider binaries
+terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log

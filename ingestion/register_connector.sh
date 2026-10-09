@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Load POSTGRES_* credentials from .env so they never live in the connector JSON
+set -a; [ -f .env ] && . ./.env; set +a
+
 CONNECT_URL="http://localhost:8083"
 CONNECTOR_NAME="market-pulse-postgres-connector"
 
@@ -24,7 +27,7 @@ echo ""
 echo "Registering Debezium Postgres connector..."
 curl -s -X POST \
   -H "Content-Type: application/json" \
-  --data @ingestion/debezium_postgres_connector.json \
+  --data "$(python3 -c 'import os,sys; print(os.path.expandvars(sys.stdin.read()))' < ingestion/debezium_postgres_connector.json)" \
   "$CONNECT_URL/connectors" | python3 -m json.tool
 
 echo ""

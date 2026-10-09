@@ -32,7 +32,9 @@ flowchart TD
 | Warehouse | Google BigQuery |
 | Transformations | dbt (silver and gold layers, with tests) |
 | Orchestration | Dagster + `dagster-dbt` |
-| Infrastructure | Docker Compose |
+| Infrastructure as code | Terraform (GCS bucket, BigQuery datasets, bronze external tables, service account + IAM) |
+| Local services | Docker Compose |
+| CI | GitHub Actions (Python compile, config validation, `terraform validate`) |
 
 ## How the pipeline works
 
@@ -105,6 +107,8 @@ market-pulse/
 │       ├── silver/             # Cleaned, typed, deduplicated
 │       └── gold/               # Business analytics
 ├── orchestration/              # Dagster assets, jobs, schedules, definitions
+├── terraform/                  # GCP infrastructure (main.tf, variables.tf, outputs.tf)
+├── .env.example                # Required environment variables
 ├── workspace.yaml
 └── requirements.txt
 ```
@@ -114,11 +118,12 @@ market-pulse/
 ### Prerequisites
 - Docker and Docker Compose
 - Python 3.10+
-- A GCP project with a GCS bucket, BigQuery enabled, and a service account key
+- A GCP project with BigQuery enabled (Terraform creates the bucket, datasets and service account)
+- Terraform 1.0+
 - A dbt profile named `market_pulse` in `~/.dbt/profiles.yml` pointing at BigQuery
 
 ### Environment variables
-Create a `.env` file in the repo root:
+Copy `.env.example` to `.env` in the repo root (it's git-ignored). `register_connector.sh` reads the Postgres credentials from it, so they never live in the connector JSON:
 
 ```
 POSTGRES_USER=market_user
@@ -139,6 +144,9 @@ ICEBERG_CATALOG_NAME=market_pulse
 ### Steps
 
 ```bash
+# 0. Provision GCP infrastructure (copy terraform.tfvars.example to terraform.tfvars first)
+cd terraform && terraform init && terraform apply && cd ..
+
 # 1. Install dependencies
 pip install -r requirements.txt
 
@@ -168,7 +176,7 @@ dagster dev
 
 Kafka UI is at http://localhost:8080 and the Dagster UI at http://localhost:3000.
 
-> The dbt sources read from a `bronze` dataset in BigQuery, which needs tables pointing at the Iceberg data on GCS (for example, BigLake/external Iceberg tables) before dbt can run.
+> The dbt sources read from the `bronze` dataset in BigQuery. Terraform creates external tables there over the Parquet data files the consumer writes to GCS, so dbt can query bronze without copying data.
 
 ## Design decisions
 
@@ -182,6 +190,5 @@ Kafka UI is at http://localhost:8080 and the Dagster UI at http://localhost:3000
 - Calculate daily open/close from the first and last bar of each day rather than min/max
 - Rename the snapshot-based moving average in `gold_portfolio_summary` or compute it over true daily closes
 - Add freshness thresholds to dbt sources
-- Move the Debezium connector credentials to environment variables
 - Run the Iceberg consumer as a monitored service and add dead-letter handling for unparseable messages
 - Add a dashboard on top of the gold layer
