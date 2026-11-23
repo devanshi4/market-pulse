@@ -6,6 +6,12 @@ A real-time data pipeline for a simulated stock brokerage. Trades are captured f
 
 > Part of my portfolio at **[devanshi4.github.io](https://devanshi4.github.io)**
 
+## Highlights
+
+- **The stream can't drift from the database:** trades are captured with CDC (Debezium reading the Postgres log), not published by the app.
+- **No lost trades, no double counts:** Kafka offsets are committed only after the Iceberg write succeeds, and silver removes any replays.
+- **Every number is traceable:** each bronze row carries the exact Kafka topic, partition and offset it came from.
+
 ---
 
 ## The problem
