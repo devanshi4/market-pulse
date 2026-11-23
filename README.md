@@ -42,6 +42,7 @@ flowchart LR
 - **At-least-once delivery, deduplicated downstream.** Kafka offsets are committed only after a successful Iceberg write. A crash can replay a batch but never lose one, and silver deduplicates on `trade_id`.
 - **Lineage on every row.** Bronze rows carry `_ingested_at`, `_kafka_topic`, `_kafka_partition`, `_kafka_offset` and `_cdc_op`, so any number can be traced to the exact message it came from.
 - **Explicit schemas in bronze.** Iceberg tables are created with fixed schemas, and incoming fields are filtered to match, so an unexpected field upstream can't break a write. Prices stay as strings in bronze to keep exact decimals, and dbt casts them to `NUMERIC`.
+- **No credentials in git.** The Debezium connector config only holds `${POSTGRES_*}` placeholders. The register script fills them from `.env` at registration time.
 - **Partitioned for the common queries.** Trades and positions are partitioned by ingestion day, prices by day and ticker.
 
 ## Data model
@@ -71,7 +72,7 @@ You need Docker, Python 3.10+, a GCP project with a GCS bucket and BigQuery, a s
    docker compose up -d
    ```
 
-3. Register the Debezium connector and create the bronze tables. The setup script drops and recreates the tables.
+3. Register the Debezium connector (it reads the Postgres credentials from `.env`) and create the bronze tables. The setup script drops and recreates the tables.
 
    ```bash
    bash ingestion/register_connector.sh
@@ -121,7 +122,6 @@ Kafka UI runs at http://localhost:8080 and Dagster at http://localhost:3000. Big
 ## Status and next steps
 
 - Compute daily open and close from the first and last bar of the day instead of min and max.
-- Move the Debezium connector's database password into an environment variable.
 - Add freshness thresholds to the dbt sources.
 - Run the consumer as a monitored service, with a dead-letter topic for messages it can't parse.
 - Put a dashboard on top of the gold layer.
