@@ -1,3 +1,7 @@
+"""Pull the latest 1-minute price bar for each ticker every minute.
+
+Each bar is written to Postgres and published to the market_prices Kafka topic.
+"""
 import os
 import time
 import logging
@@ -12,7 +16,6 @@ from data_generators.kafka_producer import get_kafka_producer, publish_event
 
 load_dotenv()
 
-# ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)s  %(message)s",
@@ -20,13 +23,11 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ── Constants ──────────────────────────────────────────────────────────────────
 TICKERS        = ["AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "NVDA", "META", "NFLX"]
 FETCH_INTERVAL = 60
 KAFKA_TOPIC    = "market_prices"
 
 
-# ── Database connection ────────────────────────────────────────────────────────
 def get_connection():
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "localhost"),
@@ -37,7 +38,6 @@ def get_connection():
     )
 
 
-# ── Fetch from Yahoo Finance ───────────────────────────────────────────────────
 def fetch_prices(tickers: list[str]) -> list[dict]:
     results    = []
     data       = yf.download(
@@ -70,7 +70,6 @@ def fetch_prices(tickers: list[str]) -> list[dict]:
     return results
 
 
-# ── Write to Postgres ──────────────────────────────────────────────────────────
 def insert_prices_postgres(conn, prices: list[dict]):
     with conn.cursor() as cur:
         for p in prices:
@@ -91,12 +90,8 @@ def insert_prices_postgres(conn, prices: list[dict]):
     log.info("Inserted %s price rows into Postgres", len(prices))
 
 
-# ── Publish to Kafka ───────────────────────────────────────────────────────────
 def publish_prices_kafka(producer, prices: list[dict]):
-    """
-    Publish each price snapshot as a separate Kafka event.
-    Key = ticker symbol so all AAPL events go to the same partition.
-    """
+    """Publish one event per ticker, keyed by ticker so each stock's prices stay in order."""
     for p in prices:
         publish_event(
             producer=producer,
@@ -107,7 +102,6 @@ def publish_prices_kafka(producer, prices: list[dict]):
     log.info("Published %s price events to Kafka topic '%s'", len(prices), KAFKA_TOPIC)
 
 
-# ── Main loop ──────────────────────────────────────────────────────────────────
 def main():
     log.info("Connecting to Postgres...")
     conn     = get_connection()
@@ -126,8 +120,7 @@ def main():
             prices = fetch_prices(TICKERS)
 
             if prices:
-                # Write to both destinations — Postgres for persistence,
-                # Kafka for real-time streaming consumers
+                # Postgres keeps the history; Kafka feeds the streaming consumer.
                 insert_prices_postgres(conn, prices)
                 publish_prices_kafka(producer, prices)
 

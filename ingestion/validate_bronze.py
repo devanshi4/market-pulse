@@ -1,3 +1,4 @@
+"""Inspect the bronze Iceberg tables: row counts, snapshots, schema, sample rows, lineage columns and nulls."""
 import os
 import logging
 from datetime import datetime, timezone
@@ -39,7 +40,7 @@ def validate_table(catalog: SqlCatalog, table_name: str):
 
     table = catalog.load_table(table_name)
 
-    # ── Row count ──────────────────────────────────────────────
+    # Row count
     arrow  = table.scan().to_arrow()
     count  = arrow.num_rows
     print(f"  Total rows      : {count}")
@@ -48,22 +49,20 @@ def validate_table(catalog: SqlCatalog, table_name: str):
         print("  WARNING: table is empty")
         return
 
-    # ── Snapshot history (time travel) ─────────────────────────
+    # Snapshot history (time travel)
     snapshots = table.metadata.snapshots
     print(f"  Snapshots       : {len(snapshots)}  (one per flush batch)")
 
-    # ── Schema ─────────────────────────────────────────────────
+    # Schema
     print(f"  Columns         : {len(table.schema().fields)}")
     for field in table.schema().fields:
         print(f"    {field.field_id:>3}. {field.name:<22} {field.field_type}")
 
-    # ── Sample rows ────────────────────────────────────────────
-    print(f"\n  Sample (first 3 rows):")
+    # Sample rows
+    print("\n  Sample (first 3 rows):")
     sample = table.scan(limit=3).to_arrow()
-    # Print each row as a readable dictionary
     for i in range(sample.num_rows):
         row = {col: sample.column(col)[i].as_py() for col in sample.column_names}
-        # Only print key fields to keep output readable
         key_fields = [
             k for k in row.keys()
             if not k.startswith("_kafka")
@@ -72,8 +71,8 @@ def validate_table(catalog: SqlCatalog, table_name: str):
         for k in key_fields:
             print(f"      {k:<22}: {row[k]}")
 
-    # ── Metadata fields check ───────────────────────────────────
-    print(f"\n  Metadata field check:")
+    # Metadata fields check
+    print("\n  Metadata field check:")
     meta_cols = ["_ingested_at", "_kafka_topic", "_kafka_partition",
                  "_kafka_offset"]
     for col in meta_cols:
@@ -83,8 +82,8 @@ def validate_table(catalog: SqlCatalog, table_name: str):
         else:
             print(f"    {col:<22}: MISSING  ✗")
 
-    # ── Null check on critical fields ──────────────────────────
-    print(f"\n  Null check (critical fields):")
+    # Null check on critical fields
+    print("\n  Null check (critical fields):")
     critical = {
         "bronze.trades":        ["trade_id", "ticker", "price"],
         "bronze.positions":     ["position_id", "ticker"],
@@ -101,18 +100,15 @@ def validate_table(catalog: SqlCatalog, table_name: str):
 
 
 def validate_snapshots(catalog: SqlCatalog):
-    """
-    Demonstrate time travel — show that Iceberg keeps a full
-    history of every write as a snapshot.
-    """
+    """Print the last few snapshots of bronze.trades. Each append is a snapshot that can be queried later."""
     print(f"\n{'='*60}")
-    print(f"  Time travel — snapshot history for bronze.trades")
+    print("  Time travel — snapshot history for bronze.trades")
     print(f"{'='*60}")
 
     table     = catalog.load_table("bronze.trades")
     snapshots = table.metadata.snapshots
 
-    for snap in snapshots[-3:]:   # show last 3 snapshots
+    for snap in snapshots[-3:]:
         ts = datetime.fromtimestamp(
             snap.timestamp_ms / 1000, tz=timezone.utc
         )

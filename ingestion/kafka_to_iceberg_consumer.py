@@ -1,3 +1,9 @@
+"""Consume CDC and price topics from Kafka and append them to bronze Iceberg tables on GCS.
+
+Messages are buffered per table and written in micro-batches. Offsets are committed only
+after a successful write: a crash can replay a batch (duplicates are removed in silver)
+but can never lose one.
+"""
 import os
 import json
 import time
@@ -19,6 +25,8 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# Flush a table when it has BATCH_SIZE messages or BATCH_FLUSH_SECONDS have passed.
+# Iceberg writes one file per append, so tiny writes would leave many tiny files.
 BATCH_FLUSH_SECONDS = 30
 BATCH_SIZE          = 100
 
@@ -62,33 +70,18 @@ def get_kafka_consumer(topics: list[str]) -> Consumer:
 
 
 def sanitize_value(v):
-    """
-    Convert any Python value into a type PyArrow handles
-    natively without needing an explicit schema.
-
-    Decimal → str       preserves exact precision e.g. "182.4500"
-    bytes   → str       decodes binary data to text
-    datetime → str      converts to ISO string since some Iceberg
-                        fields store timestamps as StringType
-    bool    → str       Debezium sends __deleted as boolean True/False
-                        we convert to "true"/"false" string
-    Everything else     int, float, str, None — PyArrow handles natively
-    """
+    """Make a value safe for PyArrow: Decimal and bytes become strings, bools become
+    "true"/"false" (Debezium's __deleted flag)."""
     if isinstance(v, Decimal):
         return str(v)
     if isinstance(v, bytes):
         return v.decode("utf-8")
     if isinstance(v, bool):
-        # Must check bool BEFORE int because in Python,
-        # bool is a subclass of int — isinstance(True, int) is True
-        # so if we checked int first, True would become 1
+        # Checked before anything int-like, since bool is a subclass of int.
         return str(v).lower()
     if isinstance(v, datetime):
-        # Keep datetime objects as-is for _ingested_at
-        # which is TimestamptzType in Iceberg.
-        # For string fields like fetched_at, the field filtering
-        # in write_batch_to_iceberg handles the type correctly
-        # because PyArrow sees a real datetime object.
+        # Left as datetime for _ingested_at (a timestamptz column). String columns
+        # holding datetimes are converted in write_batch_to_iceberg.
         return v
     return v
 
@@ -105,7 +98,7 @@ def parse_message(msg) -> dict | None:
 
         payload = json.loads(raw_value.decode("utf-8"))
 
-        # Add pipeline metadata
+        # Lineage columns: where each row came from and when it was ingested.
         payload["_ingested_at"]     = datetime.now(timezone.utc)
         payload["_kafka_topic"]     = msg.topic()
         payload["_kafka_partition"] = msg.partition()
@@ -135,11 +128,9 @@ def write_batch_to_iceberg(
 
     iceberg_table = catalog.load_table(table_name)
 
-    # Get only the columns this table expects.
-    # This drops:
-    # - __deleted  (Debezium adds this for DELETE events)
-    # - _cdc_op    (not in market_prices schema)
-    # - Any other unexpected fields
+    # Keep only the columns in the table schema. This drops Debezium's __deleted flag,
+    # _cdc_op on the price table, and anything unexpected, so schema drift upstream
+    # can't break the write.
     expected_cols = {field.name for field in iceberg_table.schema().fields}
 
     filtered_batch = [
@@ -147,9 +138,8 @@ def write_batch_to_iceberg(
         for row in batch
     ]
 
-    # For string fields that received a datetime object
-    # (e.g. fetched_at in market_prices), convert to ISO string now
-    # so PyArrow infers string type rather than timestamp
+    # String columns that received a datetime (fetched_at) get an ISO string,
+    # otherwise PyArrow would infer a timestamp and the append would fail.
     string_fields = {
         field.name
         for field in iceberg_table.schema().fields
@@ -166,7 +156,6 @@ def write_batch_to_iceberg(
                 cleaned[k] = v
         final_batch.append(cleaned)
 
-    # Let PyArrow infer schema from sanitized values
     arrow_table = pa.Table.from_pylist(final_batch)
     iceberg_table.append(arrow_table)
 
@@ -226,6 +215,7 @@ def main():
                     batch_buffer[table_name] = []
                     flushed_any = True
 
+            # Commit only after the writes above succeeded (at-least-once delivery).
             if flushed_any or time_to_flush:
                 consumer.commit(asynchronous=False)
                 last_flush_time = now

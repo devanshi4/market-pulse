@@ -13,10 +13,8 @@ casted AS (
         owner_name,
         email,
 
-        -- balance comes as string from Debezium NUMERIC handling
         CAST(balance AS NUMERIC)      AS balance,
 
-        -- created_at is epoch microseconds
         TIMESTAMP_MICROS(
             CAST(created_at AS INT64)
         )                             AS created_at,
@@ -30,8 +28,6 @@ casted AS (
       AND account_id IS NOT NULL
 ),
 
--- Keep latest version of each account
--- (in case account details like balance were updated)
 latest AS (
     SELECT
         *,

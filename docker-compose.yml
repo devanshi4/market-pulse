@@ -6,7 +6,7 @@ networks:
 
 services:
 
-  # ── Postgres ───────────────────────────────────────────────────────────────
+  # Postgres
   postgres:
     image: postgres:15
     container_name: market_pulse_postgres
@@ -36,7 +36,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Kafka (KRaft mode) ─────────────────────────────────────
+  # Kafka (KRaft mode)
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: market_pulse_kafka
@@ -50,14 +50,14 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS:               1@kafka:29093
       CLUSTER_ID:                                   MkU3OEVBNTcwNTJENDM2Qk
 
-      # Listeners and advertised listeners:
+      # Containers use kafka:9092; scripts on the host use localhost:29092.
       KAFKA_LISTENERS:                              PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:29092
       KAFKA_ADVERTISED_LISTENERS:                   PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP:         PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME:             PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES:              CONTROLLER
 
-      # Replication — 1 because we only have one broker locally
+      # Single local broker, so every replication factor is 1.
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR:       1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR:          1
@@ -75,7 +75,7 @@ services:
       timeout: 10s
       retries: 10
 
-  # ── Kafka Connect + Debezium ───────────────────────────────────────────────
+  # Kafka Connect + Debezium
   kafka-connect:
     image: debezium/connect:2.4
     container_name: market_pulse_connect
@@ -108,7 +108,7 @@ services:
       timeout: 10s
       retries: 10
 
-  # ── Kafka UI ───────────────────────────────────────────────────────────────
+  # Kafka UI
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: market_pulse_kafka_ui

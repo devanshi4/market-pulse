@@ -1,3 +1,4 @@
+"""Bronze-layer checks that run before any dbt model is rebuilt."""
 import os
 import subprocess
 import logging
@@ -14,18 +15,11 @@ log = logging.getLogger(__name__)
     description="Validates that bronze Iceberg tables on GCS are receiving data",
 )
 def bronze_tables_health_check(context: AssetExecutionContext):
-    """
-    Checks that all four bronze Iceberg tables have data.
+    """Fail fast if any bronze table is empty.
 
-    In production this would trigger the Kafka consumer or check
-    that it is running. For our pipeline, the consumer runs
-    continuously as a separate process — this asset validates
-    that it has been writing data successfully.
-
-    context.log is Dagster's logger — everything you log here
-    appears in the Dagster UI run history.
+    The Kafka consumer runs as its own long-lived process, so this asset checks its
+    output rather than starting it.
     """
-    # Import here to avoid circular imports
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -62,7 +56,6 @@ def bronze_tables_health_check(context: AssetExecutionContext):
         results[table_name] = row_count
         context.log.info("%s: %s rows", table_name, row_count)
 
-    # Fail if any table is empty
     empty_tables = [t for t, count in results.items() if count == 0]
     if empty_tables:
         raise Exception(
@@ -70,8 +63,7 @@ def bronze_tables_health_check(context: AssetExecutionContext):
             f"Make sure kafka_to_iceberg_consumer.py is running."
         )
 
-    # Return metadata — this shows up in the Dagster UI
-    # as a summary of what this asset produced
+    # Row counts show up on the asset page in the Dagster UI.
     return {
         "row_counts": MetadataValue.json(results),
         "total_rows": MetadataValue.int(sum(results.values())),
@@ -85,17 +77,7 @@ def bronze_tables_health_check(context: AssetExecutionContext):
     deps=[bronze_tables_health_check],
 )
 def bronze_source_freshness(context: AssetExecutionContext):
-    """
-    Runs dbt source freshness checks.
-
-    dbt can check when a source table was last updated and
-    alert if it's too stale. This catches situations where
-    the Kafka consumer stopped writing data.
-
-    deps=[bronze_tables_health_check] means this asset
-    depends on bronze_tables_health_check — Dagster will
-    always run that one first before running this one.
-    """
+    """Run `dbt source freshness` to catch a consumer that is up but has stopped writing."""
     dbt_dir = os.path.join(
         os.path.dirname(__file__), '..', '..', 'dbt_project'
     )

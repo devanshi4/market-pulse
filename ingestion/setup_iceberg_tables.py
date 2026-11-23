@@ -1,3 +1,7 @@
+"""Reset the bronze Iceberg tables on GCS: drop them, then create them with explicit schemas.
+
+This is destructive by design. Run it once when setting up, or to start over.
+"""
 import os
 import logging
 from dotenv import load_dotenv
@@ -40,15 +44,11 @@ def get_catalog() -> SqlCatalog:
     )
 
 
-# ── Schemas ────────────────────────────────────────────────────────────────────
-# CRITICAL RULE: source_id in PartitionField must match the field_id
-# of _ingested_at in THAT specific schema. Each schema has a different
-# number of fields before _ingested_at so each needs its own source_id.
+# Explicit schemas instead of inferring them from the first message, so a malformed
+# event can't change a table's columns. Prices are strings to keep exact decimals.
 #
-# TRADES_SCHEMA:        _ingested_at = field 8  → partition source_id=8
-# POSITIONS_SCHEMA:     _ingested_at = field 7  → partition source_id=7
-# ACCOUNTS_SCHEMA:      _ingested_at = field 6  → no partitioning
-# MARKET_PRICES_SCHEMA: _ingested_at = field 8  → partition source_id=8
+# A partition spec refers to its source column by field ID, and _ingested_at has a
+# different ID in each schema (8, 7, 6, 8). That's why each table gets its own spec below.
 
 TRADES_SCHEMA = Schema(
     NestedField(1,  "trade_id",         LongType(),        required=False),
@@ -58,7 +58,7 @@ TRADES_SCHEMA = Schema(
     NestedField(5,  "quantity",         LongType(),        required=False),
     NestedField(6,  "price",            StringType(),      required=False),
     NestedField(7,  "traded_at",        LongType(),        required=False),
-    NestedField(8,  "_ingested_at",     TimestamptzType(), required=False),  # ← 8
+    NestedField(8,  "_ingested_at",     TimestamptzType(), required=False),
     NestedField(9,  "_kafka_topic",     StringType(),      required=False),
     NestedField(10, "_kafka_partition", LongType(),        required=False),
     NestedField(11, "_kafka_offset",    LongType(),        required=False),
@@ -72,7 +72,7 @@ POSITIONS_SCHEMA = Schema(
     NestedField(4,  "shares_held",      StringType(),      required=False),
     NestedField(5,  "avg_buy_price",    StringType(),      required=False),
     NestedField(6,  "last_updated",     LongType(),        required=False),
-    NestedField(7,  "_ingested_at",     TimestamptzType(), required=False),  # ← 7
+    NestedField(7,  "_ingested_at",     TimestamptzType(), required=False),
     NestedField(8,  "_kafka_topic",     StringType(),      required=False),
     NestedField(9,  "_kafka_partition", LongType(),        required=False),
     NestedField(10, "_kafka_offset",    LongType(),        required=False),
@@ -85,7 +85,7 @@ ACCOUNTS_SCHEMA = Schema(
     NestedField(3,  "email",            StringType(),      required=False),
     NestedField(4,  "balance",          StringType(),      required=False),
     NestedField(5,  "created_at",       LongType(),        required=False),
-    NestedField(6,  "_ingested_at",     TimestamptzType(), required=False),  # ← 6
+    NestedField(6,  "_ingested_at",     TimestamptzType(), required=False),
     NestedField(7,  "_kafka_topic",     StringType(),      required=False),
     NestedField(8,  "_kafka_partition", LongType(),        required=False),
     NestedField(9,  "_kafka_offset",    LongType(),        required=False),
@@ -100,16 +100,15 @@ MARKET_PRICES_SCHEMA = Schema(
     NestedField(5,  "close_price",      StringType(),      required=False),
     NestedField(6,  "volume",           LongType(),        required=False),
     NestedField(7,  "fetched_at",       StringType(),      required=False),
-    NestedField(8,  "_ingested_at",     TimestamptzType(), required=False),  # ← 8
+    NestedField(8,  "_ingested_at",     TimestamptzType(), required=False),
     NestedField(9,  "_kafka_topic",     StringType(),      required=False),
     NestedField(10, "_kafka_partition", LongType(),        required=False),
     NestedField(11, "_kafka_offset",    LongType(),        required=False),
 )
 
 
-# ── Partition specs ────────────────────────────────────────────────────────────
-# Each table gets its OWN partition spec because source_id must match
-# the field_id of _ingested_at in THAT table's schema specifically.
+# Partition by ingestion day so queries over recent data skip old files.
+# Prices are also partitioned by ticker, the most common filter.
 
 TRADES_PARTITION = PartitionSpec(
     PartitionField(
@@ -153,12 +152,12 @@ TABLES = [
     {
         "name":      "bronze.positions",
         "schema":    POSITIONS_SCHEMA,
-        "partition": POSITIONS_PARTITION,   # ← own partition spec now
+        "partition": POSITIONS_PARTITION,
     },
     {
         "name":      "bronze.accounts",
         "schema":    ACCOUNTS_SCHEMA,
-        "partition": PartitionSpec(),        # no partitioning — 10 rows
+        "partition": PartitionSpec(),        # 10 rows: partitioning would only add overhead
     },
     {
         "name":      "bronze.market_prices",
@@ -204,7 +203,7 @@ def main():
     catalog = get_catalog()
     log.info("Dropping existing tables...")
     drop_tables(catalog)
-    log.info("Creating tables with correct schemas...")
+    log.info("Creating tables...")
     create_tables(catalog)
     log.info("All bronze tables ready.")
 

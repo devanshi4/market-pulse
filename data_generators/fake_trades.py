@@ -1,3 +1,7 @@
+"""Simulated brokerage: place a random BUY or SELL every few seconds and keep positions in sync.
+
+Trades land in Postgres, and Debezium picks them up from the write-ahead log.
+"""
 import os
 import time
 import random
@@ -6,12 +10,10 @@ from datetime import datetime
 from decimal import Decimal
 
 import psycopg2
-from faker import Faker
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Logging setup ──────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)s  %(message)s",
@@ -19,7 +21,6 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ── Constants ──────────────────────────────────────────────────────────────────
 TICKERS = {
     "AAPL":  182.00,
     "GOOGL": 175.00,
@@ -31,11 +32,10 @@ TICKERS = {
     "NFLX":  625.00,
 }
 
-SLEEP_SECONDS   = 3    # insert a trade every 3 seconds
-PRICE_VARIATION = 0.03 # price moves up to ±3% from base
+SLEEP_SECONDS   = 3     # one trade every 3 seconds
+PRICE_VARIATION = 0.03  # up to ±3% from the base price
 
 
-# ── Database connection ────────────────────────────────────────────────────────
 def get_connection():
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "localhost"),
@@ -46,18 +46,13 @@ def get_connection():
     )
 
 
-# ── Price simulation ───────────────────────────────────────────────────────────
 def simulate_price(base_price: float) -> Decimal:
-    """
-    Apply a small random walk to the base price.
-    This makes the data feel like real market movement.
-    """
+    """Return the base price moved by a random amount within ±PRICE_VARIATION."""
     variation = random.uniform(-PRICE_VARIATION, PRICE_VARIATION)
     price = base_price * (1 + variation)
     return Decimal(str(round(price, 4)))
 
 
-# ── Core trade logic ───────────────────────────────────────────────────────────
 def insert_trade(cursor, account_id: int, ticker: str,
                  trade_type: str, quantity: int, price: Decimal):
     cursor.execute(
@@ -73,14 +68,8 @@ def insert_trade(cursor, account_id: int, ticker: str,
 
 def upsert_position(cursor, account_id: int, ticker: str,
                     trade_type: str, quantity: int, price: Decimal):
-    """
-    Update the positions table to reflect the new trade.
-    If a position doesn't exist yet for this account + ticker, create it.
-    If it does exist, update shares_held and recalculate avg_buy_price.
-
-    UPSERT = INSERT ... ON CONFLICT DO UPDATE
-    This is a single atomic SQL statement — no need to check first then insert.
-    """
+    """Apply a trade to the position. A BUY upserts and recalculates the weighted
+    average buy price in one statement; a SELL reduces shares and never goes below zero."""
     if trade_type == "BUY":
         cursor.execute(
             """
@@ -110,16 +99,14 @@ def upsert_position(cursor, account_id: int, ticker: str,
 
 
 def generate_trade(conn):
-    """
-    Pick a random account, ticker, side, and quantity.
-    Insert the trade and update the position inside one transaction.
-    """
+    """Generate one random trade. The trade and its position update commit together,
+    so the CDC stream never sees one without the other."""
     ticker     = random.choice(list(TICKERS.keys()))
     base_price = TICKERS[ticker]
     price      = simulate_price(base_price)
     trade_type = random.choice(["BUY", "SELL"])
     quantity   = random.randint(1, 50)
-    account_id = random.randint(1, 10)   # we seeded 10 accounts in 01_schema.sql
+    account_id = random.randint(1, 10)   # init/01_schema.sql seeds 10 accounts
 
     with conn.cursor() as cur:
         trade_id = insert_trade(cur, account_id, ticker, trade_type, quantity, price)
@@ -132,7 +119,6 @@ def generate_trade(conn):
     )
 
 
-# ── Main loop ──────────────────────────────────────────────────────────────────
 def main():
     log.info("Connecting to Postgres...")
     conn = get_connection()

@@ -1,3 +1,4 @@
+"""Shared Kafka producer and JSON publishing helper."""
 import os
 import json
 import logging
@@ -12,36 +13,20 @@ log = logging.getLogger(__name__)
 
 
 def get_kafka_producer() -> Producer:
-    """
-    Create and return a Kafka producer configured for our local broker.
-    All scripts that need to publish events import this function.
-    """
     config = {
-        # Your laptop → Docker, so use localhost and the EXTERNAL port
+        # Scripts run on the host, so they use the broker's external listener.
         "bootstrap.servers": os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092"),
-        # How many partition replicas must confirm a write before
-        # the producer considers it successful.
-        # "all" = wait for all in-sync replicas (safest, slight latency cost)
+        # Wait for all in-sync replicas: a little slower, but no silently lost prices.
         "acks": "all",
-        # Retry up to 3 times if a write fails transiently
         "retries": 3,
-        # Wait up to 1 second to batch messages before sending.
-        # Improves throughput when many messages are produced quickly.
+        # Batch for up to 100 ms before sending.
         "linger.ms": 100,
     }
     return Producer(config)
 
 
 class DecimalDatetimeEncoder(json.JSONEncoder):
-    """
-    Custom JSON encoder that handles two types Python's default
-    encoder cannot serialize:
-      - Decimal  → convert to string  (preserves exact precision)
-      - datetime → convert to ISO 8601 string  (standard timestamp format)
-
-    Without this, json.dumps() would throw a TypeError on our
-    price and timestamp fields.
-    """
+    """Serialize Decimal as a string (no float rounding on prices) and datetime as ISO 8601."""
     def default(self, obj):
         if isinstance(obj, Decimal):
             return str(obj)
@@ -56,16 +41,8 @@ def publish_event(
     key: str,
     payload: dict,
 ) -> None:
-    """
-    Serialize payload to JSON and publish it to the given Kafka topic.
-
-    Parameters:
-        producer : the Kafka producer instance
-        topic    : topic name to publish to
-        key      : partition key — events with the same key always
-                   go to the same partition (guarantees ordering per key)
-        payload  : the event data as a Python dictionary
-    """
+    """Publish one JSON event. The key picks the partition, so events for the same
+    key (a ticker) stay in order."""
     try:
         producer.produce(
             topic=topic,
@@ -73,10 +50,8 @@ def publish_event(
             value=json.dumps(payload, cls=DecimalDatetimeEncoder).encode("utf-8"),
             on_delivery=_delivery_callback,
         )
-        # flush() ensures the message is actually sent now rather than
-        # sitting in the producer's internal buffer.
-        # For low-volume use cases like ours, flush after every message.
-        # In high-throughput scenarios you'd flush in batches instead.
+        # Volume is low (a few events a minute), so flushing per message is fine.
+        # At higher volume this would flush per batch instead.
         producer.flush()
 
     except Exception as e:
@@ -85,11 +60,7 @@ def publish_event(
 
 
 def _delivery_callback(err, msg):
-    """
-    Called automatically by the producer after each message
-    is either successfully delivered or permanently failed.
-    This is asynchronous — it fires after produce() returns.
-    """
+    """Log the delivery result for each message."""
     if err:
         log.error(
             "Message delivery failed | topic=%s | error=%s",
