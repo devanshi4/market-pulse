@@ -50,7 +50,7 @@ flowchart LR
 - **Explicit schemas in bronze.** Iceberg tables are created with fixed schemas, and incoming fields are filtered to match, so an unexpected field upstream can't break a write. Prices stay as strings in bronze to keep exact decimals, and dbt casts them to `NUMERIC`.
 - **No credentials in git.** The Debezium connector config only holds `${POSTGRES_*}` placeholders. The register script fills them from `.env` at registration time.
 - **Partitioned for the common queries.** Trades and positions are partitioned by ingestion day, prices by day and ticker.
-- **Infrastructure as code.** Terraform creates the GCS bucket (versioned, with a lifecycle rule), the BigQuery bronze, silver and gold datasets, the bronze external tables and a least-privilege service account, so the whole GCP side can be rebuilt with one `terraform apply`.
+- **Infrastructure as code.** Terraform creates the GCS bucket (versioned, with a lifecycle rule), the BigQuery bronze, silver and gold datasets, the bronze external tables and the pipeline's service account, so the whole GCP side can be rebuilt with one `terraform apply`.
 
 ## Data model
 

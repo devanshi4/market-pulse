@@ -1,7 +1,4 @@
-# variables.tf
-# Declares every variable this Terraform configuration needs.
-# Think of this as the function signature — what inputs does
-# this infrastructure definition require?
+# Inputs for the Market Pulse infrastructure. Set them in terraform.tfvars.
 
 variable "project_id" {
   description = "Your GCP project ID"

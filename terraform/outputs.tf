@@ -1,7 +1,4 @@
-# outputs.tf
-# Values printed after "terraform apply" completes.
-# Useful for confirming what was created and getting
-# connection details you need elsewhere.
+# Values printed after terraform apply, used to fill in .env and the dbt profile.
 
 output "gcs_bucket_name" {
   description = "Name of the GCS lakehouse bucket"
