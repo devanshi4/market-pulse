@@ -2,7 +2,7 @@
 
 A real-time data pipeline for a simulated stock brokerage. Trades are captured from Postgres with change data capture, streamed through Kafka with live market prices, landed as Apache Iceberg tables on Google Cloud Storage, and modeled into portfolio analytics with dbt on BigQuery.
 
-**Stack:** PostgreSQL · Debezium · Kafka · Apache Iceberg · GCS · BigQuery · dbt · Dagster · Docker
+**Stack:** PostgreSQL · Debezium · Kafka · Apache Iceberg · GCS · BigQuery · dbt · Dagster · Terraform · Docker
 
 > Part of my portfolio at **[devanshi4.github.io](https://devanshi4.github.io)**
 
@@ -50,6 +50,7 @@ flowchart LR
 - **Explicit schemas in bronze.** Iceberg tables are created with fixed schemas, and incoming fields are filtered to match, so an unexpected field upstream can't break a write. Prices stay as strings in bronze to keep exact decimals, and dbt casts them to `NUMERIC`.
 - **No credentials in git.** The Debezium connector config only holds `${POSTGRES_*}` placeholders. The register script fills them from `.env` at registration time.
 - **Partitioned for the common queries.** Trades and positions are partitioned by ingestion day, prices by day and ticker.
+- **Infrastructure as code.** Terraform creates the GCS bucket (versioned, with a lifecycle rule), the BigQuery bronze, silver and gold datasets, the bronze external tables and a least-privilege service account, so the whole GCP side can be rebuilt with one `terraform apply`.
 
 ## Data model
 
@@ -65,10 +66,16 @@ dbt tests cover uniqueness, not-null and accepted values on tickers and trade ty
 
 ## Run it locally
 
-You need Docker, Python 3.10+, a GCP project with a GCS bucket and BigQuery, a service account key, and a dbt profile named `market_pulse` pointing at BigQuery.
+You need Docker, Python 3.10+, Terraform, a GCP project, and a dbt profile named `market_pulse` pointing at BigQuery.
 
-1. Create a `.env` file with the Postgres, Kafka and GCP settings (`POSTGRES_*`, `KAFKA_BOOTSTRAP_SERVERS`, `GCP_PROJECT_ID`, `GCS_BUCKET`, `GOOGLE_APPLICATION_CREDENTIALS`).
-2. Install dependencies and start the services:
+1. Copy `.env.example` to `.env` and fill in the Postgres, Kafka and GCP settings.
+2. Create the GCP resources. Copy `terraform/terraform.tfvars.example` to `terraform.tfvars` and set your project first.
+
+   ```bash
+   cd terraform && terraform init && terraform apply && cd ..
+   ```
+
+3. Install dependencies and start the services:
 
    ```bash
    pip install -r requirements.txt
@@ -78,7 +85,7 @@ You need Docker, Python 3.10+, a GCP project with a GCS bucket and BigQuery, a s
    docker compose up -d
    ```
 
-3. Register the Debezium connector (it reads the Postgres credentials from `.env`) and create the bronze tables. The setup script drops and recreates the tables.
+4. Register the Debezium connector (it reads the Postgres credentials from `.env`) and create the bronze tables. The setup script drops and recreates the tables.
 
    ```bash
    bash ingestion/register_connector.sh
@@ -88,7 +95,7 @@ You need Docker, Python 3.10+, a GCP project with a GCS bucket and BigQuery, a s
    python ingestion/setup_iceberg_tables.py
    ```
 
-4. In separate terminals, start the trade generator, the price fetcher and the consumer:
+5. In separate terminals, start the trade generator, the price fetcher and the consumer:
 
    ```bash
    python data_generators/fake_trades.py
@@ -102,7 +109,7 @@ You need Docker, Python 3.10+, a GCP project with a GCS bucket and BigQuery, a s
    python ingestion/kafka_to_iceberg_consumer.py
    ```
 
-5. Check that bronze data landed, compile dbt, and start Dagster:
+6. Check that bronze data landed, compile dbt, and start Dagster:
 
    ```bash
    python ingestion/validate_bronze.py
@@ -112,7 +119,9 @@ You need Docker, Python 3.10+, a GCP project with a GCS bucket and BigQuery, a s
    cd dbt_project && dbt compile && cd .. && dagster dev
    ```
 
-Kafka UI runs at http://localhost:8080 and Dagster at http://localhost:3000. BigQuery needs external tables over the Iceberg data on GCS (for example BigLake) before dbt can read the `bronze` dataset.
+Kafka UI runs at http://localhost:8080 and Dagster at http://localhost:3000. dbt reads bronze through the BigQuery external tables that Terraform creates over the Parquet files on GCS.
+
+Every push runs CI: Python files compile, the connector and YAML configs parse, and `terraform validate` passes.
 
 ## Project structure
 
@@ -122,7 +131,9 @@ Kafka UI runs at http://localhost:8080 and Dagster at http://localhost:3000. Big
 ├── data_generators/          # Trade simulator, price fetcher, Kafka producer helper
 ├── ingestion/                # Connector setup, Iceberg tables, consumer, bronze checks
 ├── dbt_project/models/       # sources, silver, gold
-└── orchestration/            # Dagster assets, jobs, schedules
+├── orchestration/            # Dagster assets, jobs, schedules
+├── terraform/                # GCS bucket, BigQuery datasets and external tables, IAM
+└── .github/workflows/ci.yml  # compile, config and Terraform checks
 ```
 
 ## Status and next steps
